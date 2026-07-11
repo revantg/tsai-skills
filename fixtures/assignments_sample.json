@@ -1,0 +1,14 @@
+[
+  {
+    "id": "cmqutyi1i01hi08njprnpfxwq",
+    "sessionId": "cmq9ghp7y03yc08o8ajxhdsu2",
+    "courseId": "cmq97i5kn032208o8xu5dab4q",
+    "title": "Session 1 - Assignment QnA",
+    "descriptionMarkdown": "# Example assignment\n\nSubmit a link.",
+    "rubricJson": [],
+    "dueAt": "2026-07-04T02:00:00.000Z",
+    "latePolicy": null,
+    "maxPoints": 500,
+    "parts": []
+  }
+]

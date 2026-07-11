@@ -1,0 +1,25 @@
+# Secrets and live dumps
+.secrets/
+out/
+*.session_token
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+*.egg-info/
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Accidental cookie DBs
+cookies.sqlite*

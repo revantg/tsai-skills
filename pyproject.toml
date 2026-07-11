@@ -1,0 +1,13 @@
+[project]
+name = "tsai-mcp-server"
+version = "0.1.0"
+description = "Headless collector and knowledge base for Axiom Learning OS (TSAI)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+tsai-collect = "tsai_collector.collect:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
