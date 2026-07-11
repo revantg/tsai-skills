@@ -12,7 +12,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from tsai_skills.auth import resolve_token as resolve_token_value
+from tsai_skills.auth import ensure_authenticated_token, resolve_token as resolve_token_value
 from tsai_skills.client import ApiError, AuthError, AxiomClient
 from tsai_skills.schema import (
     SchemaError,
@@ -26,7 +26,14 @@ DEFAULT_COURSE = "cmq97i5kn032208o8xu5dab4q"
 
 
 def resolve_token(args: argparse.Namespace) -> str:
-    return resolve_token_value(token=args.token, cookie_file=args.cookie_file)
+    if getattr(args, "skip_session_probe", False):
+        return resolve_token_value(token=args.token, cookie_file=args.cookie_file)
+    return ensure_authenticated_token(
+        token=args.token,
+        cookie_file=args.cookie_file,
+        base_url=args.base_url,
+        auto_refresh=not getattr(args, "no_refresh", False),
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -46,7 +53,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--skip-session-probe",
         action="store_true",
-        help="Do not call /api/auth/session before collect",
+        help="Do not call /api/auth/session before collect (also skips auto-refresh)",
+    )
+    p.add_argument(
+        "--no-refresh",
+        action="store_true",
+        help="Do not pull a fresh cookie from Zen if the session is dead",
     )
     p.add_argument(
         "--allow-empty",
@@ -73,13 +85,14 @@ def main(argv: list[str] | None = None) -> int:
         token = resolve_token(args)
         client = AxiomClient(session_token=token, base_url=args.base_url)
 
+        # ensure_authenticated_token already probed; still attach session payload when possible
         session_info = None
         if not args.skip_session_probe:
             session_info = client.get_session()
             if not session_looks_authenticated(session_info):
                 raise AuthError(
                     "/api/auth/session returned empty/unauthenticated body {}; "
-                    "cookie/session invalid or expired"
+                    "cookie/session invalid or expired after resolve"
                 )
 
         sessions_raw = client.get_sessions(args.course_id)

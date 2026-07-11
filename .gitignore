@@ -4,6 +4,9 @@ out/
 *.session_token
 .env
 .env.*
+# Hardcoded local cookie (never commit)
+src/tsai_skills/local_cookie.py
+**/local_cookie.py
 
 # Python
 __pycache__/

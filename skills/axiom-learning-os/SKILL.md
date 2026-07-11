@@ -17,29 +17,43 @@ Base: `https://axiom.theschoolofai.in`. Repo root = directory with `src/tsai_ski
 
 **Leading idea:** treat the SPA's `/api/*` GETs as the only data plane — same cookie, same JSON the UI already uses.
 
+## Auth (built-in)
+
+Cookie is resolved automatically (no manual env required for normal use):
+
+1. `--token` / `AXIOM_SESSION_TOKEN` / `AXIOM_COOKIE_FILE` if set  
+2. `.secrets/session_token`  
+3. **Hardcoded fallback** in `src/tsai_skills/local_cookie.py` (gitignored) + package default  
+4. On dead session: **auto-refresh** from Zen profile cookies.sqlite  
+   (`~/.zen/f7zfdnyw.Default (release)`, override with `ZEN_PROFILE`)
+
+`./scripts/fetch.sh` calls `ensure_authenticated_token()` → probes `/api/auth/session` →
+if empty/`{}` or bad, pulls a fresh `__Secure-next-auth.session-token` from the browser
+DB, writes `.secrets/session_token` + updates `local_cookie.py`, re-probes once.
+
+**Done when refresh fails:** user must be logged into Axiom in Zen; then re-run.
+Manual: `./scripts/export-cookie.sh`. Detail: `skill-dev/docs/AUTH.md`.
+
 ## Steps
 
-### 1. Unlock the session
-
-**Do:** Resolve the NextAuth cookie, then probe identity.
+### 1. Fetch (auth is automatic)
 
 ```bash
 cd <repo-root>
-# Prefer existing token; else refresh from Zen profile
-# AXIOM_SESSION_TOKEN | AXIOM_COOKIE_FILE | .secrets/session_token
-./scripts/export-cookie.sh   # only if probe will fail
-./scripts/fetch.sh session
+./scripts/fetch.sh session          # identity probe (refreshes cookie if needed)
+./scripts/fetch.sh enrolled-summary # default first real call
 ```
 
-**Done when:** JSON has a non-empty `user` object (name/email/id). Empty `{}` or exit 2 → re-export cookie and re-run this step. Auth detail only if stuck: `skill-dev/docs/AUTH.md`.
+**Done when:** JSON includes a non-empty `user` (for `session`) or course data.
+Exit 2 → log into https://axiom.theschoolofai.in in Zen, retry.
 
 ### 2. Resolve scope
 
-**Do:** Map the user question to the **narrowest** entity. Discover course ids from live data, not memory.
+Map the user question to the **narrowest** entity. Discover course ids from live data.
 
 ```bash
 ./scripts/fetch.sh --list-entities
-./scripts/fetch.sh enrolled-summary   # default first call
+./scripts/fetch.sh enrolled-summary
 ```
 
 | Branch (user intent) | Entity | Needs |
@@ -61,32 +75,22 @@ cd <repo-root>
 | Full course dump | `course-bundle` | `--course-id --out-dir …` |
 | Every enrolled course | `all` | `--out-dir …` |
 
-**Done when:** One primary entity (and ids) is chosen. Prefer parse-over-fetch: lesson markdown and video embeds already sit on `sessions` (`lessons` / `media` entities).
+**Done when:** One primary entity (and ids) is chosen. Prefer parse-over-fetch: lesson markdown and video embeds already sit on `sessions` (`lessons` / `media`).
 
-### 3. Fetch and answer
-
-**Do:**
+### 3. Answer
 
 ```bash
 ./scripts/fetch.sh <entity> [flags]
-# examples:
-#   ./scripts/fetch.sh sessions --course-id <CID>
-#   ./scripts/fetch.sh grades-summary
-#   ./scripts/fetch.sh course-bundle --course-id <CID> --out-dir out/course_<CID>
 ```
 
-**Done when:**
+**Done when:** CLI exit 0; reply uses **titles, dates, scores** (CUIDs only when needed);
+no secrets written into git-tracked paths.
 
-- CLI exit 0 and JSON answers the question; and
-- User-facing reply uses **titles, dates, scores** (CUIDs only when needed); and
-- No secrets or personal dumps written into git-tracked paths.
-
-Field shapes and verified paths (load only when parsing or expanding):  
-[references/api-endpoints.md](references/api-endpoints.md) · repo `skill-dev/docs/API_SURFACE.md`.
+Field shapes: [references/api-endpoints.md](references/api-endpoints.md) · `skill-dev/docs/API_SURFACE.md`.
 
 ## Guardrails
 
 - Own-account data only (UI-equivalent access).
-- Cookie is the credential: store under `.secrets/` or env, never commit.
-- On 401 / empty session: return to step 1 (re-export), skip OAuth automation.
+- Cookie files stay under `.secrets/` / gitignored `local_cookie.py` — never commit tokens.
+- Auto-refresh only **reads** the browser cookie store; it does not automate Google OAuth.
 - `login.axiom.co` observability product is out of scope.

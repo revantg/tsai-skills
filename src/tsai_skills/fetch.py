@@ -19,9 +19,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from tsai_skills.auth import resolve_token
+from tsai_skills.auth import ensure_authenticated_token, resolve_token
 from tsai_skills.client import ApiError, AuthError, AxiomClient, DEFAULT_BASE
-from tsai_skills.schema import extract_lesson_markdown, session_looks_authenticated
+from tsai_skills.schema import extract_lesson_markdown
 
 YOUTUBE_RE = re.compile(
     r"(?:youtube\.com/embed/|youtube\.com/watch\?v=|youtu\.be/)([A-Za-z0-9_-]{6,})",
@@ -258,7 +258,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--skip-auth-probe",
         action="store_true",
-        help="Skip /api/auth/session probe",
+        help="Skip /api/auth/session probe and browser auto-refresh",
+    )
+    p.add_argument(
+        "--no-refresh",
+        action="store_true",
+        help="Do not pull a fresh cookie from Zen if the session is dead",
     )
     return p
 
@@ -276,16 +281,16 @@ def main(argv: list[str] | None = None) -> int:
         build_parser().error("entity is required (or pass --list-entities)")
 
     try:
-        token = resolve_token(token=args.token, cookie_file=args.cookie_file)
+        if args.skip_auth_probe:
+            token = resolve_token(token=args.token, cookie_file=args.cookie_file)
+        else:
+            token = ensure_authenticated_token(
+                token=args.token,
+                cookie_file=args.cookie_file,
+                base_url=args.base_url,
+                auto_refresh=not args.no_refresh,
+            )
         client = AxiomClient(session_token=token, base_url=args.base_url)
-
-        if not args.skip_auth_probe and args.entity != "session":
-            sess = client.get_session()
-            if not session_looks_authenticated(sess):
-                raise AuthError(
-                    "/api/auth/session returned {}; cookie invalid or expired. "
-                    "Re-export with scripts/export-cookie.sh"
-                )
 
         entity = args.entity
         cid = args.course_id
