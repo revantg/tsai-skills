@@ -1,105 +1,130 @@
-# tsai-mcp-server
+# tsai-skills
 
-Headless client + knowledge base for **Axiom Learning OS** at The School of AI:
+**Grok skills** + headless fetch toolkit for **Axiom Learning OS**
+(The School of AI).
 
 **Host:** `https://axiom.theschoolofai.in`
 
-This repo documents how authentication works, which HTTP APIs the browser hits, how to collect **course sessions** and **assignments** without a browser, and how that knowledge was reverse-engineered (Zen Browser + Firefox DevTools MCP). It is written so a **new agent can expand** extraction to grades, lecture video embeds, lesson markdown, quizzes, submissions, etc. without rediscovering the stack.
+Agent interface is the skill `axiom-learning-os` (not an MCP server). Day-to-day
+data pull is cookie + CLI; discovery used Zen + Firefox DevTools once.
 
-## Quick start — collect sessions + assignments
+## Quick start — what am I enrolled in?
 
 ```bash
-cd ~/timepass/tsai-mcp-server
+cd ~/timepass/tsai-skills
 
-# 1) Put your NextAuth session token somewhere local (never commit)
-#    Value of cookie: __Secure-next-auth.session-token
-export AXIOM_SESSION_TOKEN='eyJ…'          # raw token only
-# or:
-# export AXIOM_COOKIE_FILE=~/timepass/tsai-mcp-server/.secrets/session_token
+# 1) Session cookie (never commit)
+#    Cookie name: __Secure-next-auth.session-token
+./scripts/export-cookie.sh
+# or: export AXIOM_SESSION_TOKEN='eyJ…'
 
-# 2) Collect (stdlib Python only)
-python3 -m tsai_collector.collect \
+# 2) Enrolled courses + standing
+./scripts/fetch.sh enrolled-summary
+# same as: PYTHONPATH=src python3 -m tsai_skills.fetch enrolled-summary
+```
+
+## Fetch any entity
+
+```bash
+./scripts/fetch.sh --list-entities
+
+./scripts/fetch.sh courses
+./scripts/fetch.sh sessions --course-id cmq97i5kn032208o8xu5dab4q
+./scripts/fetch.sh grades-summary
+./scripts/fetch.sh lessons --course-id cmq97i5kn032208o8xu5dab4q
+./scripts/fetch.sh media --course-id cmq97i5kn032208o8xu5dab4q
+
+./scripts/fetch.sh course-bundle \
   --course-id cmq97i5kn032208o8xu5dab4q \
   --out-dir out/course_cmq97i5kn032208o8xu5dab4q
+
+./scripts/fetch.sh all --out-dir out/all
 ```
 
-Requires `PYTHONPATH=src` or:
+Default module entry is fetch:
 
 ```bash
-cd ~/timepass/tsai-mcp-server
-PYTHONPATH=src python3 -m tsai_collector.collect --course-id cmq97i5kn032208o8xu5dab4q --out-dir out/course_…
+PYTHONPATH=src python3 -m tsai_skills enrolled-summary
 ```
 
-Helper script:
+### Legacy narrow collector (sessions + assignments only)
 
 ```bash
-./scripts/collect_course.sh cmq97i5kn032208o8xu5dab4q
+./skill-dev/scripts/collect-course.sh cmq97i5kn032208o8xu5dab4q
 ```
 
-Outputs under `out/…/`:
+## Skills
 
-| File | Contents |
-|------|----------|
-| `collect.json` | Combined payload + counts + session probe |
-| `sessions.json` | All class sessions + nested lessons (markdown/video HTML often **inline**) |
-| `assignments.json` | Course assignments (descriptions, parts, due dates) |
+| Path | Purpose |
+|------|---------|
+| [`skills/axiom-learning-os/`](skills/axiom-learning-os/) | Canonical skill (auth → scope → fetch) |
+| [`.grok/skills/axiom-learning-os`](.grok/skills/) | Symlink so Grok auto-discovers the skill |
+| `skills/…/references/api-endpoints.md` | Field-level API catalog |
 
-## Docs map (start here)
+Invoke with `/axiom-learning-os` or natural language (“what courses am I enrolled in?”).
+
+## Docs (skill development)
+
+Full map: [`skill-dev/`](skill-dev/).
 
 | Doc | Purpose |
 |-----|---------|
-| [docs/AUTH.md](docs/AUTH.md) | **How auth works** for every API call |
-| [docs/COLLECTING.md](docs/COLLECTING.md) | How to collect sessions + assignments headlessly |
-| [docs/API_SURFACE.md](docs/API_SURFACE.md) | Known endpoints, shapes, expansion roadmap |
-| [docs/REVERSE_ENGINEERING.md](docs/REVERSE_ENGINEERING.md) | **How this was discovered** (Zen, MCP, settings) |
-| [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md) | Stateless runbook for agents adding new entities |
+| [skill-dev/docs/AUTH.md](skill-dev/docs/AUTH.md) | Cookie auth for every API call |
+| [skill-dev/docs/API_SURFACE.md](skill-dev/docs/API_SURFACE.md) | Verified endpoint map |
+| [skill-dev/docs/COLLECTING.md](skill-dev/docs/COLLECTING.md) | Sessions + assignments collector notes |
+| [skill-dev/docs/AGENT_PLAYBOOK.md](skill-dev/docs/AGENT_PLAYBOOK.md) | Expand extraction for new entities |
+| [skill-dev/docs/REVERSE_ENGINEERING.md](skill-dev/docs/REVERSE_ENGINEERING.md) | How APIs were discovered |
 
-## Mental model (30 seconds)
+## Mental model
 
-1. Students log in with **Google** via **NextAuth** in the browser once.
-2. Browser keeps an HttpOnly cookie: `__Secure-next-auth.session-token`.
-3. All Learning OS JSON APIs are **same-origin** `https://axiom.theschoolofai.in/api/…` and authenticate with that cookie only (no Bearer token).
-4. Headless code does the same GETs the SPA does: copy the cookie → `curl`/Python → JSON.
+1. Log in once with **Google** via **NextAuth** in the browser.
+2. Reuse cookie `__Secure-next-auth.session-token` for same-origin `/api/*` GETs.
+3. No Bearer token; CSRF not required for GETs.
 
 ```
-Browser (Google OAuth once)
-    │
-    ▼
 Cookie: __Secure-next-auth.session-token
-    │
-    ├─ GET /api/auth/session          → identity probe
-    ├─ GET /api/courses/{id}/sessions → classes + lessons (+ markdown/video HTML)
-    └─ GET /api/assignments?courseId= → assignments
+    ├─ /api/auth/session
+    ├─ /api/courses
+    ├─ /api/courses/{id}/sessions     (+ lesson markdown, video HTML)
+    ├─ /api/assignments?courseId=
+    ├─ /api/grades?view=summaries
+    └─ /api/dashboard/student
 ```
-
-## Default course used in examples
-
-- **Course id:** `cmq97i5kn032208o8xu5dab4q`
-- **Course page:** `https://axiom.theschoolofai.in/courses/cmq97i5kn032208o8xu5dab4q`
-- **ERA V5** (observed under a student account)
-
-## Safety
-
-- Do **not** commit `.secrets/`, live cookies, or full course dumps with personal data.
-- Session cookies expire; on HTTP 401, re-export from a logged-in browser.
-- This is for the student’s own account data they can already access in the UI.
 
 ## Layout
 
 ```
-tsai-mcp-server/
-  README.md
-  docs/                 # durable knowledge (read first)
-  src/tsai_collector/   # headless HTTP collector
-  scripts/              # shell helpers
-  fixtures/             # anonymized shape samples for tests
+tsai-skills/
+  skills/                    # source of truth for Grok skills
+    axiom-learning-os/
+  .grok/skills/              # symlinks → skills/* (Grok discovery)
+  src/tsai_skills/           # Python package (fetch / collect / client)
+  scripts/                   # export-cookie, fetch (runtime)
+  skill-dev/                 # docs, fixtures, legacy collect-course
+    docs/
+    fixtures/                # anonymized JSON for tests
+    scripts/collect-course.sh
   tests/
-  out/                  # gitignored live dumps
-  .secrets/             # gitignored tokens
+  out/                       # gitignored live dumps
+  .secrets/                  # gitignored tokens
 ```
 
-## Tests
+## Example course id
+
+- **ERA V5:** `cmq97i5kn032208o8xu5dab4q`
+- Always resolve live ids via `./scripts/fetch.sh courses` if enrollment changes.
+
+## Safety
+
+- Do not commit `.secrets/`, live cookies, or personal course dumps.
+- On HTTP 401, re-export the cookie.
+- Own-account data only (same access as the UI).
+
+## Install / tests
 
 ```bash
+# optional editable install for console scripts tsai-fetch / tsai-collect
+pip install -e .
+
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```

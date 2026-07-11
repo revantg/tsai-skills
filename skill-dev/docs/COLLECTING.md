@@ -78,10 +78,10 @@ Related (not collected by default CLI, but same auth):
 ## Official CLI (this repo)
 
 ```bash
-cd ~/timepass/tsai-mcp-server
+cd ~/timepass/tsai-skills
 export AXIOM_SESSION_TOKEN='…'   # or AXIOM_COOKIE_FILE
 
-PYTHONPATH=src python3 -m tsai_collector.collect \
+PYTHONPATH=src python3 -m tsai_skills.collect \
   --course-id cmq97i5kn032208o8xu5dab4q \
   --out-dir out/course_cmq97i5kn032208o8xu5dab4q
 ```
@@ -89,7 +89,7 @@ PYTHONPATH=src python3 -m tsai_collector.collect \
 Or:
 
 ```bash
-./scripts/collect_course.sh cmq97i5kn032208o8xu5dab4q
+./skill-dev/scripts/collect-course.sh cmq97i5kn032208o8xu5dab4q
 ```
 
 ### Exit codes

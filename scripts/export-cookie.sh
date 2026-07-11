@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Export __Secure-next-auth.session-token from Zen's cookies.sqlite into .secrets/
+# Export __Secure-next-auth.session-token from Zen cookies.sqlite into .secrets/
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PROFILE="${ZEN_PROFILE:-$HOME/.zen/f7zfdnyw.Default (release)}"
@@ -14,7 +14,6 @@ fi
 mkdir -p "$(dirname "$OUT")"
 TMP="$(mktemp)"
 cp -f "$DB" "$TMP"
-# best-effort wal
 cp -f "${DB}-wal" "${TMP}-wal" 2>/dev/null || true
 cp -f "${DB}-shm" "${TMP}-shm" 2>/dev/null || true
 

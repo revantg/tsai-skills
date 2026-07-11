@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from tsai_collector.schema import (  # noqa: E402
+from tsai_skills.schema import (  # noqa: E402
     SchemaError,
     extract_lesson_markdown,
     session_looks_authenticated,
@@ -21,14 +21,14 @@ from tsai_collector.schema import (  # noqa: E402
 
 class SchemaTests(unittest.TestCase):
     def test_sessions_fixture(self) -> None:
-        data = json.loads((ROOT / "fixtures" / "sessions_sample.json").read_text())
+        data = json.loads((ROOT / "skill-dev" / "fixtures" / "sessions_sample.json").read_text())
         items = validate_sessions(data)
         self.assertGreaterEqual(len(items), 1)
         for k in ("id", "title", "order", "status"):
             self.assertIn(k, items[0])
 
     def test_assignments_fixture(self) -> None:
-        data = json.loads((ROOT / "fixtures" / "assignments_sample.json").read_text())
+        data = json.loads((ROOT / "skill-dev" / "fixtures" / "assignments_sample.json").read_text())
         items = validate_assignments(data)
         self.assertGreaterEqual(len(items), 1)
         for k in ("id", "title", "courseId"):
@@ -45,7 +45,7 @@ class SchemaTests(unittest.TestCase):
         )
 
     def test_flatten_lessons(self) -> None:
-        data = json.loads((ROOT / "fixtures" / "sessions_sample.json").read_text())
+        data = json.loads((ROOT / "skill-dev" / "fixtures" / "sessions_sample.json").read_text())
         rows = extract_lesson_markdown(data)
         self.assertEqual(len(rows), 1)
         self.assertIn("markdownContent", rows[0])

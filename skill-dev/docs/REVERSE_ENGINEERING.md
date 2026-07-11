@@ -305,10 +305,12 @@ Initial collector prototype also lived under the tokenizer assignment tree:
 ~/timepass/tokenizer-assignment/demo/lab/axiom_collector/
 ```
 
-**Canonical, standalone project for expansion is this repo:**
+**Canonical project (renamed from `tsai-mcp-server` → `tsai-skills`):**
 
 ```text
-~/timepass/tsai-mcp-server/
+~/timepass/tsai-skills/
+  skills/axiom-learning-os/   # Grok skill (preferred agent surface)
+  src/tsai_skills/            # fetch / collect package
 ```
 
 ---

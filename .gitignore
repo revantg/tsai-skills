@@ -23,3 +23,6 @@ venv/
 
 # Accidental cookie DBs
 cookies.sqlite*
+
+# Local Grok session dumps (may contain secrets)
+grok-session/

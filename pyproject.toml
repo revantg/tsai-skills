@@ -1,13 +1,14 @@
 [project]
-name = "tsai-mcp-server"
+name = "tsai-skills"
 version = "0.1.0"
-description = "Headless collector and knowledge base for Axiom Learning OS (TSAI)"
+description = "Grok skills and headless fetch toolkit for TSAI Axiom Learning OS"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []
 
 [project.scripts]
-tsai-collect = "tsai_collector.collect:main"
+tsai-fetch = "tsai_skills.fetch:main"
+tsai-collect = "tsai_skills.collect:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

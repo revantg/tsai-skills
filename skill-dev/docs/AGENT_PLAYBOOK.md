@@ -9,13 +9,22 @@ Read this + [AUTH.md](./AUTH.md) + [API_SURFACE.md](./API_SURFACE.md) before add
 | Entity | How to get it |
 |--------|----------------|
 | Auth | Cookie `__Secure-next-auth.session-token` |
+| Enrolled courses | `GET /api/courses` → `fetch courses` / `enrolled-summary` |
 | Sessions / classes | `GET /api/courses/{id}/sessions` |
 | Assignments list | `GET /api/assignments?courseId=` |
+| Grades + summaries | `GET /api/grades`, `?view=summaries` |
+| Quizzes, flashcards, dashboard, announcements | See `skill-dev/docs/API_SURFACE.md` |
 | Lesson markdown | Usually `sessions[].lessons[].markdownContent` |
 | Lecture video embeds | Usually `sessions[].studioVideoHtml` (parse iframe src) |
 | GMeet links | `gmeetVideoHtml` or markdown content |
 
-Working CLI: `python3 -m tsai_collector.collect` (see README).
+Working CLIs:
+
+- `./scripts/fetch.sh <entity>` or `python3 -m tsai_skills.fetch <entity>` (preferred)
+- `./skill-dev/scripts/collect-course.sh` or `python3 -m tsai_skills.collect` (sessions + assignments only)
+
+Grok skill (canonical): `skills/axiom-learning-os`  
+(`.grok/skills/axiom-learning-os` is a symlink for discovery — use skills, not an MCP server.)
 
 ---
 
@@ -26,7 +35,7 @@ Working CLI: `python3 -m tsai_collector.collect` (see README).
    - Grok + `firefox-devtools` MCP `--connect-existing`.  
    - Navigate to the UI that shows the entity.  
    - `list_network_requests` → note `/api/…` paths.  
-   - Update `docs/API_SURFACE.md` with method, path, sample fields.
+   - Update `skill-dev/docs/API_SURFACE.md` with method, path, sample fields.
 
 2. **Minimal auth check**  
    - curl with **only** session-token cookie.  
@@ -36,7 +45,7 @@ Working CLI: `python3 -m tsai_collector.collect` (see README).
    - Add method on `AxiomClient`.  
    - Optional schema validator in `schema.py`.  
    - Wire CLI flag or subcommand in `collect.py` / new module.  
-   - Fixture under `fixtures/` + unit test without network.
+   - Fixture under `skill-dev/fixtures/` + unit test without network.
 
 4. **Verify**  
    - Live run with `AXIOM_SESSION_TOKEN`.  

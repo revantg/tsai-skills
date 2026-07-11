@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """Headless collector: Axiom course sessions + assignments via NextAuth cookie.
 
-See docs/AUTH.md and docs/COLLECTING.md in the repo root.
+See skill-dev/docs/AUTH.md and skill-dev/docs/COLLECTING.md.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from tsai_collector.client import ApiError, AuthError, AxiomClient
-from tsai_collector.schema import (
+from tsai_skills.auth import resolve_token as resolve_token_value
+from tsai_skills.client import ApiError, AuthError, AxiomClient
+from tsai_skills.schema import (
     SchemaError,
     extract_lesson_markdown,
     session_looks_authenticated,
@@ -26,33 +26,7 @@ DEFAULT_COURSE = "cmq97i5kn032208o8xu5dab4q"
 
 
 def resolve_token(args: argparse.Namespace) -> str:
-    if args.token:
-        return args.token.strip()
-    env_tok = os.environ.get("AXIOM_SESSION_TOKEN", "").strip()
-    if env_tok:
-        return env_tok
-    cookie_file = args.cookie_file or os.environ.get("AXIOM_COOKIE_FILE", "")
-    if cookie_file:
-        path = Path(cookie_file).expanduser()
-        if not path.is_file():
-            raise AuthError(f"cookie file not found: {path}")
-        text = path.read_text(encoding="utf-8").strip()
-        if not text:
-            raise AuthError(f"cookie file empty: {path}")
-        if "\n" in text and "session-token" not in text.split("\n", 1)[0]:
-            for line in text.splitlines():
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                if line.startswith("AXIOM_SESSION_TOKEN="):
-                    return line.split("=", 1)[1].strip().strip("'\"")
-                if "=" not in line or line.startswith("__Secure"):
-                    return line
-        return text
-    raise AuthError(
-        "no session cookie: set AXIOM_SESSION_TOKEN, AXIOM_COOKIE_FILE, "
-        "--cookie-file, or --token (see docs/AUTH.md)"
-    )
+    return resolve_token_value(token=args.token, cookie_file=args.cookie_file)
 
 
 def build_parser() -> argparse.ArgumentParser:
