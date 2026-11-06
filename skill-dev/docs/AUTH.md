@@ -126,7 +126,7 @@ Headless collectors **do not** automate this. Documented so agents understand wh
 2. Open DevTools → **Network**.
 3. Click any `api/auth/session` or `api/courses/…` request.
 4. Copy the `Cookie` header value for `__Secure-next-auth.session-token`, **or** Storage → Cookies → copy that cookie’s value.
-5. Save to `.secrets/session_token` (one line, raw value) or export as env:
+5. Save to `~/.config/axiom-learning-os/session_token` (one line, raw value, mode 0600) or export as env:
 
 ```bash
 export AXIOM_SESSION_TOKEN='paste-raw-token-here'
@@ -134,10 +134,13 @@ export AXIOM_SESSION_TOKEN='paste-raw-token-here'
 
 ### B. Profile `cookies.sqlite` (Zen)
 
-Default Zen profile observed on Linux:
+The CLI does this automatically (`tsai_skills.auth.refresh_token_from_browser`): it scans every
+Zen/Firefox profile (`~/Library/Application Support/{zen,Firefox}/Profiles/*`, `~/.zen/*`,
+`~/.mozilla/firefox/*`, `%APPDATA%/{zen,Mozilla/Firefox}/Profiles/*`, or `AXIOM_BROWSER_PROFILE`)
+and takes the most recently used Axiom cookie. Manual query:
 
 ```text
-~/.zen/f7zfdnyw.Default (release)/cookies.sqlite
+<profile>/cookies.sqlite
 ```
 
 ```sql
@@ -167,7 +170,7 @@ If the DB is locked by a running browser, copy the file (+ `-wal`/`-shm` if pres
 ## 8. Security notes for agents
 
 - Treat tokens as **passwords** for the student account.
-- Never commit `.secrets/`, raw cookies, or full `collect.json` with personal emails if the repo is shared.
+- Never commit `~/.config/axiom-learning-os/`, raw cookies, or full `collect.json` with personal emails if the repo is shared.
 - Prefer env var or ignored file path.
 - `login.axiom.co` cookies (`oauth2_sid`, etc.) are **irrelevant** to Learning OS course APIs.
 

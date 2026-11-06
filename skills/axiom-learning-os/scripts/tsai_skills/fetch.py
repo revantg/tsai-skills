@@ -2,13 +2,13 @@
 """Fetch any verified Axiom Learning OS entity over the student cookie APIs.
 
 Examples:
-  PYTHONPATH=src python3 -m tsai_skills.fetch courses
-  PYTHONPATH=src python3 -m tsai_skills.fetch sessions --course-id CID
-  PYTHONPATH=src python3 -m tsai_skills.fetch enrolled-summary
-  PYTHONPATH=src python3 -m tsai_skills.fetch course-bundle --course-id CID --out-dir out/c
-  PYTHONPATH=src python3 -m tsai_skills.fetch all --out-dir out/all
-  PYTHONPATH=src python3 -m tsai_skills.fetch chat-messages --course-id CID --channel G5
-  PYTHONPATH=src python3 -m tsai_skills.fetch chat-dump --course-id CID --out-dir out/chat
+  scripts/fetch.sh courses
+  scripts/fetch.sh sessions --course-id CID
+  scripts/fetch.sh enrolled-summary
+  scripts/fetch.sh course-bundle --course-id CID --out-dir out/c
+  scripts/fetch.sh all --out-dir out/all
+  scripts/fetch.sh chat-messages --course-id CID --channel G5
+  scripts/fetch.sh chat-dump --course-id CID --out-dir out/chat
 """
 
 from __future__ import annotations
@@ -301,7 +301,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--no-refresh",
         action="store_true",
-        help="Do not pull a fresh cookie from Zen if the session is dead",
+        help="Do not pull a fresh cookie from the browser if the session is dead",
     )
     return p
 

@@ -253,8 +253,8 @@ sessions.json
 CLI helpers:
 
 ```bash
-PYTHONPATH=src python3 -m tsai_skills.fetch lessons --course-id CID
-PYTHONPATH=src python3 -m tsai_skills.fetch media --course-id CID
+scripts/fetch.sh lessons --course-id CID
+scripts/fetch.sh media --course-id CID
 ```
 
 ## Lecture parts that are not `/api` JSON

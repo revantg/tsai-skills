@@ -78,10 +78,10 @@ Related (not collected by default CLI, but same auth):
 ## Official CLI (this repo)
 
 ```bash
-cd ~/timepass/tsai-skills
+cd tsai-skills   # repo clone
 export AXIOM_SESSION_TOKEN='…'   # or AXIOM_COOKIE_FILE
 
-PYTHONPATH=src python3 -m tsai_skills.collect \
+PYTHONPATH=skills/axiom-learning-os/scripts python3 -m tsai_skills.collect \
   --course-id cmq97i5kn032208o8xu5dab4q \
   --out-dir out/course_cmq97i5kn032208o8xu5dab4q
 ```

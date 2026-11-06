@@ -4,8 +4,7 @@ out/
 *.session_token
 .env
 .env.*
-# Hardcoded local cookie (never commit)
-src/tsai_skills/local_cookie.py
+# Old hardcoded-cookie module (no longer used; never commit)
 **/local_cookie.py
 
 # Python

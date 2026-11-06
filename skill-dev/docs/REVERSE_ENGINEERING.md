@@ -310,7 +310,7 @@ Initial collector prototype also lived under the tokenizer assignment tree:
 ```text
 ~/timepass/tsai-skills/
   skills/axiom-learning-os/   # Grok skill (preferred agent surface)
-  src/tsai_skills/            # fetch / collect package
+  skills/axiom-learning-os/scripts/tsai_skills/            # fetch / collect package
 ```
 
 ---

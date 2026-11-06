@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Headless collector: Axiom course sessions + assignments via NextAuth cookie.
 
-See skill-dev/docs/AUTH.md and skill-dev/docs/COLLECTING.md.
+Auth: tsai_skills.auth (see SKILL.md "Auth").
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--no-refresh",
         action="store_true",
-        help="Do not pull a fresh cookie from Zen if the session is dead",
+        help="Do not pull a fresh cookie from the browser if the session is dead",
     )
     p.add_argument(
         "--allow-empty",

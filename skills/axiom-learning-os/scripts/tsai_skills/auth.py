@@ -1,4 +1,4 @@
-"""Cookie/token resolution + optional refresh from Zen browser profile."""
+"""Cookie/token resolution + optional refresh from a Zen/Firefox browser profile."""
 
 from __future__ import annotations
 
@@ -10,16 +10,24 @@ from pathlib import Path
 
 from tsai_skills.client import AuthError
 
-# Hardcoded cookie lives in local_cookie.py (gitignored). Auto-refresh also
-# rewrites that file + .secrets/session_token when the browser has a live session.
-try:
-    from tsai_skills.local_cookie import SESSION_TOKEN as HARDCODED_SESSION_TOKEN
-except ImportError:  # pragma: no cover
-    HARDCODED_SESSION_TOKEN = ""
+# Persisted token: one line, mode 0600, outside the skill folder so reinstalls keep it.
+DEFAULT_COOKIE_FILE = (
+    Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    / "axiom-learning-os"
+    / "session_token"
+)
 
-DEFAULT_ZEN_PROFILE = Path.home() / ".zen" / "f7zfdnyw.Default (release)"
-REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_COOKIE_FILE = REPO_ROOT / ".secrets" / "session_token"
+# Firefox-family profile roots (Zen is a Firefox fork; same cookies.sqlite schema).
+# Chromium browsers encrypt cookies at rest, so they are not read here.
+_APPDATA = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming")
+PROFILE_ROOTS = [
+    Path.home() / "Library" / "Application Support" / "zen" / "Profiles",
+    Path.home() / "Library" / "Application Support" / "Firefox" / "Profiles",
+    Path.home() / ".zen",
+    Path.home() / ".mozilla" / "firefox",
+    _APPDATA / "zen" / "Profiles",
+    _APPDATA / "Mozilla" / "Firefox" / "Profiles",
+]
 
 
 def _read_token_text(text: str) -> str:
@@ -56,11 +64,8 @@ def write_cookie_file(token: str, path: Path | None = None) -> Path:
     return out
 
 
-def extract_token_from_cookies_db(db_path: Path) -> str:
-    """Read __Secure-next-auth.session-token for theschoolofai from a cookies.sqlite."""
-    if not db_path.is_file():
-        raise AuthError(f"cookies.sqlite not found: {db_path}")
-
+def _cookie_from_db(db_path: Path) -> tuple[int, str] | None:
+    """(lastAccessed, value) of the newest Axiom session cookie in a cookies.sqlite, or None."""
     # Copy DB (+ WAL/SHM) so a locked browser profile still works.
     tmp_dir = Path(tempfile.mkdtemp(prefix="tsai-cookie-"))
     try:
@@ -75,61 +80,49 @@ def extract_token_from_cookies_db(db_path: Path) -> str:
         try:
             row = con.execute(
                 """
-                SELECT value FROM moz_cookies
+                SELECT lastAccessed, value FROM moz_cookies
                 WHERE name = '__Secure-next-auth.session-token'
                   AND host LIKE '%theschoolofai%'
                 ORDER BY lastAccessed DESC
                 LIMIT 1
                 """
             ).fetchone()
+        except sqlite3.Error:  # not a Firefox cookie DB / mid-migration
+            return None
         finally:
             con.close()
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
-
-    if not row or not row[0]:
-        raise AuthError(
-            "session-token cookie not found in browser profile for theschoolofai.in "
-            "(log into Axiom Learning OS in Zen/Firefox first)"
-        )
-    return str(row[0]).strip()
+    if not row or not row[1]:
+        return None
+    return int(row[0] or 0), str(row[1]).strip()
 
 
-def zen_profile_path() -> Path:
-    env = os.environ.get("ZEN_PROFILE", "").strip()
+def browser_cookie_dbs() -> list[Path]:
+    """cookies.sqlite files to search: AXIOM_BROWSER_PROFILE if set, else every Zen/Firefox profile."""
+    env = os.environ.get("AXIOM_BROWSER_PROFILE", "").strip()
     if env:
-        return Path(env).expanduser()
-    return DEFAULT_ZEN_PROFILE
+        return [Path(env).expanduser() / "cookies.sqlite"]
+    return sorted(p for root in PROFILE_ROOTS if root.is_dir() for p in root.glob("*/cookies.sqlite"))
 
 
-def refresh_token_from_browser(
-    *,
-    profile: Path | None = None,
-    persist: bool = True,
-) -> str:
-    """Pull a fresh session cookie from Zen/Firefox cookies.sqlite.
+def refresh_token_from_browser(*, persist: bool = True) -> str:
+    """Pull the newest Axiom session cookie from any Zen/Firefox profile.
 
     Requires an already-logged-in browser profile (does not run Google OAuth).
     """
-    profile = profile or zen_profile_path()
-    db = profile / "cookies.sqlite"
-    token = extract_token_from_cookies_db(db)
+    dbs = browser_cookie_dbs()
+    found = [c for c in (_cookie_from_db(db) for db in dbs if db.is_file()) if c]
+    if not found:
+        where = ", ".join(str(d.parent) for d in dbs) or "no Zen/Firefox profiles found"
+        raise AuthError(
+            "no Axiom session cookie in a Zen/Firefox profile "
+            f"(searched: {where}). Log into https://axiom.theschoolofai.in there, "
+            f"or save the __Secure-next-auth.session-token value to {DEFAULT_COOKIE_FILE}"
+        )
+    token = max(found)[1]
     if persist:
         write_cookie_file(token)
-        # Keep local hardcoded module in sync when present / writable.
-        local_mod = Path(__file__).resolve().parent / "local_cookie.py"
-        try:
-            local_mod.write_text(
-                '"""Local hardcoded session cookie — gitignored, do not commit."""\n\n'
-                f'SESSION_TOKEN = "{token}"\n',
-                encoding="utf-8",
-            )
-            try:
-                local_mod.chmod(0o600)
-            except OSError:
-                pass
-        except OSError:
-            pass
     return token
 
 
@@ -137,7 +130,6 @@ def resolve_token(
     token: str | None = None,
     cookie_file: str | Path | None = None,
     *,
-    allow_hardcoded: bool = True,
     allow_browser: bool = False,
 ) -> str:
     """Resolve NextAuth session token.
@@ -146,9 +138,8 @@ def resolve_token(
       1. explicit ``token`` / ``--token``
       2. ``AXIOM_SESSION_TOKEN``
       3. ``cookie_file`` / ``AXIOM_COOKIE_FILE``
-      4. ``.secrets/session_token``
-      5. hardcoded fallback (local_cookie / HARDCODED_SESSION_TOKEN)
-      6. if ``allow_browser``: extract from Zen cookies.sqlite
+      4. ``DEFAULT_COOKIE_FILE`` (~/.config/axiom-learning-os/session_token)
+      5. if ``allow_browser``: newest cookie from a Zen/Firefox profile (then saved to 4)
     """
     if token and token.strip():
         return token.strip()
@@ -171,16 +162,13 @@ def resolve_token(
     if file_tok:
         return file_tok
 
-    if allow_hardcoded and HARDCODED_SESSION_TOKEN.strip():
-        return HARDCODED_SESSION_TOKEN.strip()
-
     if allow_browser:
         return refresh_token_from_browser(persist=True)
 
     raise AuthError(
-        "no session cookie: set AXIOM_SESSION_TOKEN, AXIOM_COOKIE_FILE, "
-        "--cookie-file, --token, or log into Zen and re-run "
-        "(auto-refresh: scripts/export-cookie.sh / refresh_token_from_browser)"
+        "no session cookie: log into https://axiom.theschoolofai.in in Zen/Firefox and re-run, "
+        f"or save the __Secure-next-auth.session-token value to {DEFAULT_COOKIE_FILE} "
+        "(or set AXIOM_SESSION_TOKEN / AXIOM_COOKIE_FILE / --token)"
     )
 
 
@@ -194,7 +182,7 @@ def ensure_authenticated_token(
     """Resolve a token and optionally refresh from the browser if the session is dead.
 
     Probes ``GET /api/auth/session``. On empty/expired session (or 401 on refresh path),
-    pulls a new cookie from Zen and re-probes once.
+    pulls a new cookie from the browser and re-probes once.
     """
     from tsai_skills.client import AxiomClient
     from tsai_skills.schema import session_looks_authenticated
@@ -210,14 +198,14 @@ def ensure_authenticated_token(
             return False
         return session_looks_authenticated(sess)
 
-    tok = resolve_token(token=token, cookie_file=cookie_file, allow_hardcoded=True)
+    tok = resolve_token(token=token, cookie_file=cookie_file, allow_browser=auto_refresh)
     if _probe(tok):
         return tok
 
     if not auto_refresh:
         raise AuthError(
-            "/api/auth/session unauthenticated and auto_refresh disabled; "
-            "re-export cookie (scripts/export-cookie.sh)"
+            "/api/auth/session unauthenticated and --no-refresh set; "
+            f"save a fresh cookie to {DEFAULT_COOKIE_FILE}"
         )
 
     try:
@@ -232,5 +220,5 @@ def ensure_authenticated_token(
 
     raise AuthError(
         "session still unauthenticated after browser cookie refresh — "
-        "log into https://axiom.theschoolofai.in in Zen, then retry"
+        "log into https://axiom.theschoolofai.in in Zen/Firefox, then retry"
     )

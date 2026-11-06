@@ -17,11 +17,9 @@ metadata:
 Headless **fetch** of the signed-in student's Learning OS data.
 Base: `https://axiom.theschoolofai.in`.
 
-**Repo root (always):** `~/timepass/tsai-skills`
-- Absolute: `/Users/revant.gupta/timepass/tsai-skills`
-- Marker: directory that contains `src/tsai_skills/` and `scripts/fetch.sh`
-- Do **not** search for it — `cd` there and run `./scripts/fetch.sh …`
-- Skill package lives at `skills/axiom-learning-os/` inside that repo (also mirrored to `~/.claude/skills/axiom-learning-os/`; the runnable CLI is still the repo root, not the skill mirror).
+**Runner:** `scripts/fetch.sh` inside this skill's folder (the folder holding this `SKILL.md`; e.g. `~/.claude/skills/axiom-learning-os` or `~/.agents/skills/axiom-learning-os`). It is self-contained: the Python package `scripts/tsai_skills/` sits next to it. Run it by its full path from any working directory, e.g. `"$SKILL_DIR/scripts/fetch.sh" session`; every `./scripts/fetch.sh` below means that path.
+
+**Needs:** `python3` ≥ 3.9 (stdlib only). Optional: `gh` (logged in; for `peers`), `yt-dlp` + `ffmpeg` (for `video-frame` and caption transcripts). Write output under a scratch dir (`--out-dir /tmp/…` or the user's notes folder), never inside the skill folder.
 
 **Leading idea:** treat the SPA's `/api/*` GETs as the only data plane — same cookie, same JSON the UI already uses.
 
@@ -62,8 +60,8 @@ Axiom only returns **your own** submission (`…/submissions` is 403 for student
 
 1. **Top Submissions** (the "Top Submissions" tab; one gallery per lecture, but **only some lectures have one**: today S1, S2, S3). Check first with `galleries --course-id CID` (list) or `lectures`. `gallery-cards --course-id CID --session 3` parses it to rows: student **name**, submission **URL** (live Netlify/surge app), description, thumbnail. It does **not** give GitHub handles. A card count can differ from the page's own header (S3 says 85, has 92 cards); trust the cards.
 2. **No gallery for that lecture** → go through GitHub. Later assignments (S9 on) are public repos, not web apps.
-   - **Name → login:** every lab PR in `theschoolofai/era-v5-lab` starts with a `Name:` line, so `peers` (no args) maps ~88 names to their PR author login. Use this whenever a gallery gives only a name. A name can map to two logins (the student's own two accounts; e.g. Revant Gupta → `revantg`, `revantgupta`; course work is under `revantg`).
-   - **Find the repo:** `peers --query "mahesh sv" --session 9` lists that student's public non-fork repos whose description says "Session 9" or whose name has an `s9` token. Without `--session` it lists all their repos.
+   - **Name → login:** every lab PR in `theschoolofai/era-v5-lab` starts with a `Name:` line, so `peers` (no args) maps ~88 names to their PR author login. Use this whenever a gallery gives only a name. A name can map to two logins (one student with two GitHub accounts); say which one holds the course work.
+   - **Find the repo:** `peers --query "<full name>" --session 9` lists that student's public non-fork repos whose description says "Session 9" or whose name has an `s9` token. Without `--session` it lists all their repos.
    - **Read it:** `gh repo view <login>/<repo>`, `gh api repos/<login>/<repo>/contents/<path>`, or clone. Public repos only; private ones (the lab-repo forks, diagnosis packs) are not reachable.
 3. Their GitHub handle can also be in their own Axiom submission (S15 team selection has a "GitHub profile" link), but that is theirs alone; use the lab PRs.
 
@@ -71,38 +69,28 @@ Students not in the lab PRs (waitlist, no PR yet) cannot be resolved; say so rat
 
 ## Auth (built-in)
 
-Cookie is resolved automatically (no manual env required for normal use):
+The student's own Axiom login cookie (`__Secure-next-auth.session-token`). Resolved in this order:
 
-1. `--token` / `AXIOM_SESSION_TOKEN` / `AXIOM_COOKIE_FILE` if set  
-2. `.secrets/session_token`  
-3. **Hardcoded fallback** in `src/tsai_skills/local_cookie.py` (gitignored) + package default  
-4. On dead session: **auto-refresh** from Zen profile cookies.sqlite  
-   (`~/.zen/f7zfdnyw.Default (release)`, override with `ZEN_PROFILE`)
+1. `--token` / `AXIOM_SESSION_TOKEN` / `--cookie-file` / `AXIOM_COOKIE_FILE`
+2. `~/.config/axiom-learning-os/session_token` (one line, mode 0600; honours `XDG_CONFIG_HOME`)
+3. **Browser:** the newest Axiom cookie in any **Zen or Firefox** profile (macOS, Linux, Windows profile roots; `AXIOM_BROWSER_PROFILE=<profile dir>` to pin one). Saved to (2).
 
-`./scripts/fetch.sh` calls `ensure_authenticated_token()` → probes `/api/auth/session` →
-if empty/`{}` or bad, pulls a fresh `__Secure-next-auth.session-token` from the browser
-DB, writes `.secrets/session_token` + updates `local_cookie.py`, re-probes once.
+Every call probes `/api/auth/session`; a dead cookie triggers step 3 once (`--no-refresh` disables it). Chrome/Arc/Safari cookies are encrypted at rest and are not read.
 
-**Done when refresh fails:** user must be logged into Axiom in Zen; then re-run.
-Manual: `./scripts/export-cookie.sh`. Detail: `skill-dev/docs/AUTH.md`.
-
-**User pasted a cookie (browser-extension JSON export)?** Take the `__Secure-next-auth.session-token`
-`value`, write it to `.secrets/session_token` **and** `src/tsai_skills/local_cookie.py`
-(`SESSION_TOKEN = "…"`, mode 0600), then `./scripts/fetch.sh session --no-refresh` to prove it.
-The token is a NextAuth JWE (`eyJhbGciOiJkaXIi…`), ~30-day expiry. The csrf/callback-url cookies are not needed for GETs.
+**First run / exit 2 (`auth error`):** ask the user to log into https://axiom.theschoolofai.in in Zen/Firefox and re-run, or to paste their cookie.
+**User pasted a cookie** (value, or a browser-extension JSON export): take the `__Secure-next-auth.session-token` `value`, write it alone to `~/.config/axiom-learning-os/session_token` (mode 0600), then `./scripts/fetch.sh session --no-refresh` to prove it. The token is a NextAuth JWE (`eyJhbGciOiJkaXIi…`), ~30-day expiry. The csrf/callback-url cookies are not needed for GETs.
 
 ## Steps
 
 ### 1. Fetch (auth is automatic)
 
 ```bash
-cd ~/timepass/tsai-skills
 ./scripts/fetch.sh session          # identity probe (refreshes cookie if needed)
 ./scripts/fetch.sh enrolled-summary # default first real call
 ```
 
 **Done when:** JSON includes a non-empty `user` (for `session`) or course data.
-Exit 2 → log into https://axiom.theschoolofai.in in Zen, retry.
+Exit 2 → see "First run / exit 2" above.
 
 ### 2. Resolve scope
 
@@ -163,14 +151,14 @@ Map the user question to the **narrowest** entity. Discover course ids from live
 **Done when:** CLI exit 0; reply uses **titles, dates, scores** (CUIDs only when needed);
 no secrets written into git-tracked paths.
 
-Field shapes: [references/api-endpoints.md](references/api-endpoints.md) · `skill-dev/docs/API_SURFACE.md`.
+Field shapes: [references/api-endpoints.md](references/api-endpoints.md).
 
 ## Guardrails
 
 - **Read-only.** Never call the POST/PATCH/DELETE routes (chat send/react/pin/hand, `…/chat/channels/{id}/read`, `chat/read-all`, quiz submit/autosave, assignment submit, notifications mark-read). Opening chat in the **UI** POSTs `/read` and clears unread; the CLI's GETs do not.
 - Own-account data only (UI-equivalent access).
-- Cookie files stay under `.secrets/` / gitignored `local_cookie.py` — never commit tokens.
+- The cookie lives only in `~/.config/axiom-learning-os/` (or the user's env/file) — never write it into a repo or into output.
 - Auto-refresh only **reads** the browser cookie store; it does not automate Google OAuth.
-- Capstone output holds **signed S3 download links** (plan-sheet packs/tokenizer sample) that expire, and chat dumps with other students' data. Write it under `out/` (gitignored) or the capstone notes folder, never into a git repo.
+- Capstone output holds **signed S3 download links** (plan-sheet packs/tokenizer sample) that expire, and chat dumps with other students' data. Write it to a scratch dir or the user's notes folder, never into a git repo or the skill folder.
 - Times in answers: **IST**. The CLI renders markdown in IST; raw JSON stays ISO UTC.
 - `login.axiom.co` observability product is out of scope.

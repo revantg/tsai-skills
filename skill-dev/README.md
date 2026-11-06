@@ -18,11 +18,9 @@ skill-dev/
 
 | Lives at repo root (runtime) | Lives here (skill development) |
 |------------------------------|----------------------------------|
-| `skills/`                    | `docs/`                          |
-| `src/tsai_skills/`           | `fixtures/`                      |
-| `scripts/fetch.sh`           | `scripts/collect-course.sh`      |
-| `scripts/export-cookie.sh`   |                                  |
-| `tests/`, `out/`, `.secrets/`|                                  |
+| `skills/axiom-learning-os/` (SKILL.md, runner, package `scripts/tsai_skills/`) | `docs/` |
+| `scripts/fetch.sh` (shortcut to the skill runner) | `fixtures/` |
+| `tests/`, `out/` | `scripts/collect-course.sh` |
 
 ## Docs map
 
@@ -40,7 +38,7 @@ Anonymized samples under `fixtures/` feed unit tests:
 
 ```bash
 # from repo root
-PYTHONPATH=src python3 -m unittest discover -s tests -v
+python3 -m unittest discover -s tests -v
 ```
 
 ## Legacy collector

@@ -1,6 +1,3 @@
 #!/usr/bin/env bash
-# Fetch any Axiom Learning OS entity (see --list-entities).
-set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-export PYTHONPATH="${ROOT}/src${PYTHONPATH:+:$PYTHONPATH}"
-exec python3 -m tsai_skills.fetch "$@"
+# Repo-root shortcut for the skill's own runner.
+exec "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/skills/axiom-learning-os/scripts/fetch.sh" "$@"

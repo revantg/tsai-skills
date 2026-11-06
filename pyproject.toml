@@ -11,4 +11,4 @@ tsai-fetch = "tsai_skills.fetch:main"
 tsai-collect = "tsai_skills.collect:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["skills/axiom-learning-os/scripts"]

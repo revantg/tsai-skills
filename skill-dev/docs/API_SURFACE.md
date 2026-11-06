@@ -226,19 +226,19 @@ Fixture samples: `skill-dev/fixtures/`.
 ## 6. CLI cheatsheet
 
 ```bash
-export AXIOM_COOKIE_FILE=.secrets/session_token   # or AXIOM_SESSION_TOKEN
+# cookie: ~/.config/axiom-learning-os/session_token, a Zen/Firefox login, or AXIOM_SESSION_TOKEN
 
-PYTHONPATH=src python3 -m tsai_skills.fetch enrolled-summary
-PYTHONPATH=src python3 -m tsai_skills.fetch courses
-PYTHONPATH=src python3 -m tsai_skills.fetch sessions --course-id CID
-PYTHONPATH=src python3 -m tsai_skills.fetch grades-summary
-PYTHONPATH=src python3 -m tsai_skills.fetch course-bundle --course-id CID --out-dir out/c
-PYTHONPATH=src python3 -m tsai_skills.fetch all --out-dir out/all
-PYTHONPATH=src python3 -m tsai_skills.fetch --list-entities
+scripts/fetch.sh enrolled-summary
+scripts/fetch.sh courses
+scripts/fetch.sh sessions --course-id CID
+scripts/fetch.sh grades-summary
+scripts/fetch.sh course-bundle --course-id CID --out-dir out/c
+scripts/fetch.sh all --out-dir out/all
+scripts/fetch.sh --list-entities
 ```
 
 Legacy sessions+assignments only:
 
 ```bash
-PYTHONPATH=src python3 -m tsai_skills.collect --course-id CID --out-dir out/…
+PYTHONPATH=skills/axiom-learning-os/scripts python3 -m tsai_skills.collect --course-id CID --out-dir out/…
 ```

@@ -1,25 +1,46 @@
 # tsai-skills
 
-**Grok skills** + headless fetch toolkit for **Axiom Learning OS**
-(The School of AI).
+Agent skill + headless fetch toolkit for **Axiom Learning OS**
+(The School of AI, `https://axiom.theschoolofai.in`).
 
-**Host:** `https://axiom.theschoolofai.in`
+The agent interface is the skill `axiom-learning-os` (not an MCP server): lectures,
+widgets, transcripts, video stills, assignments, grades, quizzes, chat history, and the
+capstone (your teams, rotations, tasks), read-only, with your own login.
 
-Agent interface is the skill `axiom-learning-os` (not an MCP server). Day-to-day
-data pull is cookie + CLI; discovery used Zen + Firefox DevTools once.
-
-## Quick start — what am I enrolled in?
+## Install (any agent: Claude Code, Codex, Cursor, …)
 
 ```bash
-cd ~/timepass/tsai-skills
-
-# 1) Enrolled courses + standing (cookie auto-resolved — see below)
-./scripts/fetch.sh enrolled-summary
-# same as: PYTHONPATH=src python3 -m tsai_skills.fetch enrolled-summary
+npx skills add revantg/tsai-skills --skill axiom-learning-os -g
 ```
 
-No env or manual cookie export is required for normal use — a hardcoded
-session token is bundled (gitignored) and auto-refreshed when it expires.
+`-g` installs for your user (`~/.claude/skills/`, `~/.agents/skills/`, …); drop it to install
+into the current project. Add `-a claude-code` to pick one agent, `-y` to skip prompts.
+Update later with `npx skills update`.
+
+**Needs:** `python3` ≥ 3.9 (stdlib only, nothing to `pip install`).
+Optional: [`gh`](https://cli.github.com) logged in (other students' repos),
+`yt-dlp` + `ffmpeg` (video screenshots, caption transcripts).
+
+**Log in once:** open https://axiom.theschoolofai.in in **Zen or Firefox** and sign in.
+The skill reads the session cookie from the browser profile on first use. Using
+Chrome/Arc/Safari? Their cookie stores are encrypted, so copy the
+`__Secure-next-auth.session-token` cookie value (DevTools → Application → Cookies)
+and save it:
+
+```bash
+mkdir -p ~/.config/axiom-learning-os
+pbpaste > ~/.config/axiom-learning-os/session_token   # or paste into the file by hand
+chmod 600 ~/.config/axiom-learning-os/session_token
+```
+
+Then ask your agent things like "what's in lecture 16?", "what are my capstone tasks this
+week?", "show the G5 chat since Monday".
+
+Run it directly from the installed folder:
+
+```bash
+~/.claude/skills/axiom-learning-os/scripts/fetch.sh enrolled-summary
+```
 
 ## Cookie auth & auto-refresh
 
@@ -33,66 +54,26 @@ No Bearer token, no API key, no CSRF for GETs. The CLI resolves the token
 in priority order and **refreshes automatically** when the session is dead:
 
 ```
-1. --token / AXIOM_SESSION_TOKEN / AXIOM_COOKIE_FILE   (explicit override)
-2. .secrets/session_token                               (persisted cookie file)
-3. src/tsai_skills/local_cookie.py                      (hardcoded fallback, gitignored)
+1. --token / AXIOM_SESSION_TOKEN / --cookie-file / AXIOM_COOKIE_FILE   (explicit override)
+2. ~/.config/axiom-learning-os/session_token                          (saved cookie)
+3. newest Axiom cookie in any Zen/Firefox profile                     (then saved to 2)
         │
         ▼
    probe GET /api/auth/session
         │
         ├─ valid (has user) → proceed
-        └─ empty {} / 401  → auto-refresh
-                │
-                ▼
-           read Zen cookies.sqlite
-           (~/.zen/f7zfdnyw.Default (release), or $ZEN_PROFILE)
-                │
-                ▼
-           write .secrets/session_token + update local_cookie.py
-                │
-                ▼
-           re-probe once → proceed or fail with “log into Axiom in Zen”
+        └─ empty {} / 401  → re-read the browser cookie (3), re-probe once
 ```
 
-### What you need for auto-refresh
-
-- **Zen Browser** (or Firefox) logged into `https://axiom.theschoolofai.in`.
-- Default profile path: `~/.zen/f7zfdnyw.Default (release)` — override with
-  `export ZEN_PROFILE=/path/to/profile`.
-- The browser does **not** need to be running; `cookies.sqlite` is read from
-  disk (copied to a temp dir if the profile is locked).
-
-### Manual refresh
+- Profiles searched: Zen and Firefox on macOS (`~/Library/Application Support/{zen,Firefox}/Profiles`),
+  Linux (`~/.zen`, `~/.mozilla/firefox`), Windows (`%APPDATA%`). Pin one with
+  `AXIOM_BROWSER_PROFILE=/path/to/profile`.
+- The browser does **not** need to be running; `cookies.sqlite` is copied and read from disk.
+- Auto-refresh **only reads** the browser cookie store; it never automates Google OAuth or stores passwords.
 
 ```bash
-./scripts/export-cookie.sh          # pull from Zen → .secrets/session_token
-```
-
-### When auto-refresh fails
-
-The session cookie in the browser is itself expired or missing. Fix:
-
-1. Open Zen, go to `https://axiom.theschoolofai.in`, log in with Google.
-2. Re-run `./scripts/fetch.sh session` (auto-refresh will pick up the new cookie).
-
-Auto-refresh **only reads** the browser cookie store — it never automates
-Google OAuth or stores passwords.
-
-### Rotating the hardcoded cookie
-
-`src/tsai_skills/local_cookie.py` is gitignored. After a successful refresh
-(or manual export), the file is auto-updated. To set it by hand:
-
-```bash
-echo '"""Local hardcoded session cookie — gitignored, do not commit."""
-SESSION_TOKEN = "eyJ…your-token…"' > src/tsai_skills/local_cookie.py
-```
-
-### Disabling auto-refresh
-
-```bash
-./scripts/fetch.sh courses --no-refresh          # fail instead of reading browser
-./scripts/fetch.sh courses --skip-auth-probe     # skip probe entirely (fast, unsafe)
+./scripts/fetch.sh courses --no-refresh          # fail instead of reading the browser
+./scripts/fetch.sh courses --skip-auth-probe     # skip the probe entirely (fast, unsafe)
 ```
 
 ## Fetch any entity
@@ -113,11 +94,7 @@ SESSION_TOKEN = "eyJ…your-token…"' > src/tsai_skills/local_cookie.py
 ./scripts/fetch.sh all --out-dir out/all
 ```
 
-Default module entry is fetch:
-
-```bash
-PYTHONPATH=src python3 -m tsai_skills enrolled-summary
-```
+Same CLI as a console script after `pip install -e .`: `tsai-fetch enrolled-summary`.
 
 ### Legacy narrow collector (sessions + assignments only)
 
@@ -129,11 +106,10 @@ PYTHONPATH=src python3 -m tsai_skills enrolled-summary
 
 | Path | Purpose |
 |------|---------|
-| [`skills/axiom-learning-os/`](skills/axiom-learning-os/) | Canonical skill (auth → scope → fetch) |
+| [`skills/axiom-learning-os/`](skills/axiom-learning-os/) | The skill: `SKILL.md`, `references/`, and the self-contained runner `scripts/fetch.sh` + package `scripts/tsai_skills/` |
 | [`.grok/skills/axiom-learning-os`](.grok/skills/) | Symlink so Grok auto-discovers the skill |
-| `skills/…/references/api-endpoints.md` | Field-level API catalog |
 
-Invoke with `/axiom-learning-os` or natural language (“what courses am I enrolled in?”).
+Invoke with `/axiom-learning-os` or natural language ("what courses am I enrolled in?").
 
 ## Docs (skill development)
 
@@ -167,18 +143,16 @@ Cookie: __Secure-next-auth.session-token
 
 ```
 tsai-skills/
-  skills/                    # source of truth for Grok skills
-    axiom-learning-os/
+  skills/axiom-learning-os/  # what `npx skills add` installs
+    SKILL.md
+    references/
+    scripts/fetch.sh         # runner (works from any install path)
+    scripts/tsai_skills/     # Python package (fetch / collect / client / auth)
   .grok/skills/              # symlinks → skills/* (Grok discovery)
-  src/tsai_skills/           # Python package (fetch / collect / client)
-  scripts/                   # export-cookie, fetch (runtime)
+  scripts/fetch.sh           # repo-root shortcut to the skill runner
   skill-dev/                 # docs, fixtures, legacy collect-course
-    docs/
-    fixtures/                # anonymized JSON for tests
-    scripts/collect-course.sh
   tests/
   out/                       # gitignored live dumps
-  .secrets/                  # gitignored tokens
 ```
 
 ## Example course id
@@ -188,16 +162,15 @@ tsai-skills/
 
 ## Safety
 
-- Do not commit `.secrets/`, `local_cookie.py`, live cookies, or personal course dumps.
-- On HTTP 401 / empty session, auto-refresh kicks in (see above); if that fails, re-login in Zen.
-- Auto-refresh only reads the browser cookie store — no OAuth automation, no passwords stored.
-- Own-account data only (same access as the UI).
+- The cookie lives in `~/.config/axiom-learning-os/` (or your env); never commit it or personal course dumps.
+- On HTTP 401 / empty session, auto-refresh kicks in (see above); if that fails, log in again in Zen/Firefox.
+- Own-account data only (same access as the UI). Read-only: no POST/PATCH/DELETE routes.
 
-## Install / tests
+## Development
 
 ```bash
-# optional editable install for console scripts tsai-fetch / tsai-collect
-pip install -e .
-
-PYTHONPATH=src python3 -m unittest discover -s tests -v
+git clone https://github.com/revantg/tsai-skills && cd tsai-skills
+python3 -m unittest discover -s tests -v
+./scripts/fetch.sh --list-entities
+pip install -e .        # optional: tsai-fetch / tsai-collect console scripts
 ```
