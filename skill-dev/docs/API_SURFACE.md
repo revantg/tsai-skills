@@ -108,8 +108,8 @@ Also: Next.js **RSC** (`?_rsc=…`) and `/_next/static/*` — **ignore**.
 | GMeet live link | `gmeetVideoHtml` **or** markdown | `meet.google.com` |
 | Session status | `status`, `opensAt`, `closesAt` | |
 
-**Agent task for “lectures”:** parse sessions JSON — usually **no new HTTP**.  
-CLI: `fetch lessons`, `fetch media`.
+**Agent task for “lectures”:** the sessions JSON has the lesson markdown and video iframes, but the rest of a lecture is elsewhere: widgets (`/widgets/*.html`), the transcript (Google Doc export), the chat channel `S<n>`, and the assignment/quiz matched by `sessionId`.
+CLI: `fetch lecture --session N` gets all of it; `fetch lectures` indexes it; `fetch lessons`, `fetch media` are the parse-only subset. See `skills/axiom-learning-os/SKILL.md` “The lecture model”.
 
 ### 3.3 Assignments / submissions / grades
 
@@ -154,13 +154,13 @@ Summary: `totalEarned`, `totalPossible`, `overallPercentage`, `gradedItemCount`.
 | `GET /api/courses/{id}/announcements` | Pinned + body + author |
 | `GET /api/notifications?limit=30` | Bell feed |
 | `GET /api/me/chat/courses` | Unread per course |
-| `GET /api/courses/{id}/chat/channels` | General / session / DM channels |
+| `GET /api/courses/{id}/chat/channels` | General / session / CAP / team group (G1–G12) / DM channels |
 | `GET /api/daily-check` | Check-in items |
 | `GET /api/invites/pending` | Invites |
 
-Chat **messages**:
-`GET /api/courses/{id}/chat/channels/{channelId}/messages` (optional expansion;
-captured on course page with chat open).
+Chat **messages**, roster, search, plus calendar/feed/search/scorecard/galleries/lesson/quiz
+questions were verified 2026-10-25 and are implemented (`chat-messages`, `chat-dump`, …).
+Shapes and pagination: `skills/axiom-learning-os/references/api-endpoints.md`.
 
 ### 3.8 Probed 404 (do not use)
 

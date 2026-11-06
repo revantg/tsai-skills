@@ -200,3 +200,104 @@ class AxiomClient:
         """GET /api/invites/pending — pending invites."""
         _, data = self._request("GET", "/api/invites/pending")
         return data
+
+    def _cpath(self, course_id: str, rest: str) -> str:
+        return f"/api/courses/{urllib.parse.quote(course_id, safe='')}{rest}"
+
+    def get_chat_messages(
+        self, course_id: str, channel_id: str, before: str | None = None
+    ) -> Any:
+        """GET …/chat/channels/{ch}/messages[?before=<createdAt>] — 50 newest, oldest first.
+
+        GET only: unlike the UI, this never POSTs /read, so unread state is untouched.
+        """
+        ch = urllib.parse.quote(channel_id, safe="")
+        q = f"?{urllib.parse.urlencode({'before': before})}" if before else ""
+        _, data = self._request(
+            "GET", self._cpath(course_id, f"/chat/channels/{ch}/messages{q}")
+        )
+        return data
+
+    def get_all_chat_messages(self, course_id: str, channel_id: str) -> list[Any]:
+        """Page backwards with ``before`` until a short page; full history oldest first."""
+        out: list[Any] = []
+        page = self.get_chat_messages(course_id, channel_id)
+        while isinstance(page, list) and page:
+            seen = {m["id"] for m in out}
+            new = [m for m in page if m["id"] not in seen]
+            if not new:
+                break
+            out = new + out
+            if len(page) < 50:
+                break
+            page = self.get_chat_messages(course_id, channel_id, before=out[0]["createdAt"])
+        return out
+
+    def get_chat_roster(self, course_id: str) -> Any:
+        """GET /api/courses/{id}/chat/roster — every course member with online flag."""
+        _, data = self._request("GET", self._cpath(course_id, "/chat/roster"))
+        return data
+
+    def search_chat(self, course_id: str, query: str, channel_id: str | None = None) -> Any:
+        """GET /api/courses/{id}/chat/search?q=[&channelId=] — {hits: [...]}."""
+        params = {"q": query, **({"channelId": channel_id} if channel_id else {})}
+        q = urllib.parse.urlencode(params)
+        _, data = self._request("GET", self._cpath(course_id, f"/chat/search?{q}"))
+        return data
+
+    def search(self, query: str) -> Any:
+        """GET /api/search?q= — ⌘K palette: courses, sessions, quizzes, assignments, chat."""
+        q = urllib.parse.urlencode({"q": query})
+        _, data = self._request("GET", f"/api/search?{q}")
+        return data
+
+    def get_calendar(self, course_id: str | None = None) -> Any:
+        """GET /api/calendar[?courseId=] — sessions/assignments/quizzes as dated events."""
+        q = f"?{urllib.parse.urlencode({'courseId': course_id})}" if course_id else ""
+        _, data = self._request("GET", f"/api/calendar{q}")
+        return data
+
+    def get_feed(self, course_id: str | None = None) -> Any:
+        """GET /api/feed[?courseId=] — shared reading links (title, url, author)."""
+        q = f"?{urllib.parse.urlencode({'courseId': course_id})}" if course_id else ""
+        _, data = self._request("GET", f"/api/feed{q}")
+        return data
+
+    def get_scorecard(self, course_id: str) -> Any:
+        """GET /api/courses/{id}/grades?view=scorecard — weighted category breakdown."""
+        _, data = self._request("GET", self._cpath(course_id, "/grades?view=scorecard"))
+        return data
+
+    def get_submission_galleries(self, course_id: str) -> Any:
+        """GET /api/courses/{id}/submission-galleries — 'Top Submissions' list."""
+        _, data = self._request("GET", self._cpath(course_id, "/submission-galleries"))
+        return data
+
+    def get_submission_gallery(self, course_id: str, gallery_id: str) -> Any:
+        """GET …/submission-galleries/{gid} — gallery htmlContent + criteriaJson."""
+        gid = urllib.parse.quote(gallery_id, safe="")
+        _, data = self._request("GET", self._cpath(course_id, f"/submission-galleries/{gid}"))
+        return data
+
+    def get_lesson(self, lesson_id: str) -> Any:
+        """GET /api/lessons/{id} — one lesson's markdown + session/course + progress."""
+        path = f"/api/lessons/{urllib.parse.quote(lesson_id, safe='')}"
+        _, data = self._request("GET", path)
+        return data
+
+    def get_quiz_questions(self, quiz_id: str) -> Any:
+        """GET /api/quizzes/{id}/questions — questions (+ answers/explanations once taken)."""
+        path = f"/api/quizzes/{urllib.parse.quote(quiz_id, safe='')}/questions"
+        _, data = self._request("GET", path)
+        return data
+
+    def get_quiz_attempt(self, quiz_id: str) -> Any:
+        """GET /api/quizzes/{id}/attempt — own attempt, score, answers."""
+        path = f"/api/quizzes/{urllib.parse.quote(quiz_id, safe='')}/attempt"
+        _, data = self._request("GET", path)
+        return data
+
+    def get_notification_prefs(self) -> Any:
+        """GET /api/me/notification-prefs — notification toggles."""
+        _, data = self._request("GET", "/api/me/notification-prefs")
+        return data

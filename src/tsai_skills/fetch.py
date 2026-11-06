@@ -7,6 +7,8 @@ Examples:
   PYTHONPATH=src python3 -m tsai_skills.fetch enrolled-summary
   PYTHONPATH=src python3 -m tsai_skills.fetch course-bundle --course-id CID --out-dir out/c
   PYTHONPATH=src python3 -m tsai_skills.fetch all --out-dir out/all
+  PYTHONPATH=src python3 -m tsai_skills.fetch chat-messages --course-id CID --channel G5
+  PYTHONPATH=src python3 -m tsai_skills.fetch chat-dump --course-id CID --out-dir out/chat
 """
 
 from __future__ import annotations
@@ -20,14 +22,21 @@ from pathlib import Path
 from typing import Any
 
 from tsai_skills.auth import ensure_authenticated_token, resolve_token
+from tsai_skills.chat import chat_dump, dump_json, resolve_channel, write_chat_dir
 from tsai_skills.client import ApiError, AuthError, AxiomClient, DEFAULT_BASE
-from tsai_skills.schema import extract_lesson_markdown
-
-YOUTUBE_RE = re.compile(
-    r"(?:youtube\.com/embed/|youtube\.com/watch\?v=|youtu\.be/)([A-Za-z0-9_-]{6,})",
-    re.I,
+from tsai_skills.lecture import (
+    MEET_RE,
+    YOUTUBE_RE,
+    capstone_bundle,
+    export_doc,
+    fetch_widget,
+    lecture_bundle,
+    lecture_index,
+    resolve_session,
+    video_frames,
 )
-MEET_RE = re.compile(r"https?://meet\.google\.com/[a-z0-9-]+", re.I)
+from tsai_skills.peers import lab_name_map, parse_gallery, user_repos
+from tsai_skills.schema import extract_lesson_markdown
 
 ENTITIES: dict[str, str] = {
     "session": "Auth session (user + expires)",
@@ -48,22 +57,41 @@ ENTITIES: dict[str, str] = {
     "dashboard": "Home dashboard (courses, deadlines, activity)",
     "notifications": "Bell notifications",
     "announcements": "Course announcements (needs --course-id)",
-    "chat-courses": "Chat sidebar courses + unread",
-    "chat-channels": "Chat channels for a course",
     "daily-check": "Daily check-in items",
+    "chat-courses": "Chat sidebar courses + unread",
+    "chat-channels": "Chat channels for a course (G, S1.., CAP, G1..G12 groups, DM)",
+    "chat-messages": "Full history of one channel (needs --course-id --channel LABEL|ID)",
+    "chat-dump": "Every channel → JSON + one markdown per channel (needs --course-id --out-dir)",
+    "chat-roster": "All course members + online flag (needs --course-id)",
+    "chat-search": "Search chat (needs --course-id --query; optional --channel)",
+    "search": "Global ⌘K search: courses/sessions/assignments/chat (needs --query)",
+    "calendar": "Dated events (optional --course-id)",
+    "feed": "Shared reading links (optional --course-id)",
+    "scorecard": "Weighted category scorecard (needs --course-id)",
+    "galleries": "Top Submissions galleries (needs --course-id; --gallery-id for one)",
+    "lesson": "One lesson by id (needs --lesson-id)",
+    "quiz-questions": "Quiz questions + answers once taken (needs --quiz-id)",
+    "quiz-attempt": "Own quiz attempt + score (needs --quiz-id)",
+    "notification-prefs": "Notification toggles",
     "invites": "Pending invites",
     "lessons": "Flattened lesson markdown from sessions",
     "media": "YouTube + GMeet index from sessions",
     "enrolled-summary": "Whoami + enrolled courses + standing + grades totals",
     "course-bundle": "Full dump for one course (many endpoints)",
+    "lectures": "Index of every lecture: widgets, transcript docs, videos, chat, assignment, quiz (needs --course-id)",
+    "lecture": "One lecture or 'all' → folder with lesson, widgets, transcript, videos, chat, assignment+submission+grade, quiz (needs --course-id --session --out-dir)",
+    "capstone": "Capstone: lectures+widgets+transcripts, my teams/rotations from the plan sheet, full group chats (needs --course-id --out-dir; optional --all-groups)",
+    "widget": "One /widgets/<name>.html: full HTML + text + parsed data (needs --widget, optional --out-dir)",
+    "transcript": "Google Doc transcript as text (needs --doc-id, optional -o)",
+    "video-frame": "PNG stills from a YouTube video at timestamps (needs --video --at 1:24:05,1:30:00 --out-dir; no login)",
+    "gallery-cards": "Top Submissions parsed to rows (student name, submission URL, description). Needs --course-id; optional --session or --gallery-id; most lectures have no gallery",
+    "peers": "Other students on GitHub: name → login from lab PR 'Name:' lines, then their repos (optional --query NAME, --session N); uses gh, no Axiom login",
     "all": "enrolled-summary + course-bundle for each enrolled course",
 }
 
 
 def _dump(data: Any, pretty: bool = True) -> str:
-    if pretty:
-        return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
-    return json.dumps(data, ensure_ascii=False) + "\n"
+    return dump_json(data, pretty)
 
 
 def _write_out(data: Any, out: Path | None, pretty: bool) -> int:
@@ -239,6 +267,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--course-id", help="Course id (CUID)")
     p.add_argument("--assignment-id", help="Assignment id")
     p.add_argument("--quiz-id", help="Quiz id")
+    p.add_argument("--lesson-id", help="Lesson id")
+    p.add_argument("--gallery-id", help="Submission gallery id")
+    p.add_argument("--channel", help="Chat channel label (G, S3, CAP, G5, DM) or id")
+    p.add_argument("--query", help="Search text for search / chat-search")
+    p.add_argument("--session", help="Lecture: session id, 16 / S16, title fragment, or 'all'")
+    p.add_argument("--widget", help="Widget file name, e.g. cap_plan_sheet or /widgets/cap_plan_sheet.html")
+    p.add_argument("--doc-id", help="Google Doc id (…/document/d/<id>/edit)")
+    p.add_argument("--video", help="YouTube id or URL")
+    p.add_argument("--at", help="Comma-separated timestamps: 5100, 84:05, 1:24:05, 1h24m5s")
+    p.add_argument("--all-groups", action="store_true", help="capstone: also dump the other teams' group chats")
     p.add_argument("--limit", type=int, default=30, help="notifications limit")
     p.add_argument("-o", "--output", type=Path, help="Write JSON to this file")
     p.add_argument(
@@ -362,10 +400,139 @@ def main(argv: list[str] | None = None) -> int:
             return _write_out(
                 client.get_chat_channels(need_course()), args.output, pretty
             )
+        if entity == "peers":
+            names = lab_name_map()
+            if not args.query:
+                return _write_out(names, args.output, pretty)
+            q = args.query.casefold()
+            hits = {n: l for n, l in names.items() if n == q} or {n: l for n, l in names.items() if q in n}
+            num = None
+            if args.session:
+                m = re.fullmatch(r"[sS]?(\d+)", args.session.strip())
+                num = int(m.group(1)) if m else None
+            out = []
+            for n, logins in hits.items():
+                for login in logins:
+                    out.append({"name": n, "login": login, "repos": user_repos(login, num)})
+            return _write_out(out, args.output, pretty)
+        if entity == "gallery-cards":
+            need_course()
+            sessions = [s for s in _as_list(client.get_sessions(cid)) if isinstance(s, dict)]
+            wanted = {g["id"] for g in _as_list(client.get_submission_galleries(cid))}
+            if args.gallery_id:
+                wanted = {args.gallery_id}
+            elif args.session:
+                sid = resolve_session(sessions, args.session)["id"]
+                wanted = {g["id"] for g in _as_list(client.get_submission_galleries(cid)) if g.get("sessionId") == sid}
+                if not wanted:
+                    raise ApiError(f"no Top Submissions gallery for {args.session!r}; use `peers` (GitHub) instead")
+            rows = []
+            for gid in sorted(wanted):
+                g = client.get_submission_gallery(cid, gid)
+                rows.append({"gallery": g["title"], "sessionTitle": g.get("sessionTitle"), "cards": parse_gallery(g.get("htmlContent") or "")})
+            return _write_out(rows, args.output, pretty)
+        if entity == "video-frame":
+            if not (args.video and args.at and args.out_dir):
+                raise ApiError("video-frame requires --video --at --out-dir")
+            paths = video_frames(args.video, args.at.split(","), args.out_dir)
+            print("\n".join(str(p) for p in paths))
+            return 0
+        if entity == "transcript":
+            if not args.doc_id:
+                raise ApiError("transcript requires --doc-id")
+            text = export_doc(args.doc_id)
+            if args.output:
+                args.output.write_text(text, encoding="utf-8")
+                print(f"wrote {args.output}", file=sys.stderr)
+            else:
+                sys.stdout.write(text)
+            return 0
+        if entity == "widget":
+            if not args.widget:
+                raise ApiError("widget requires --widget")
+            path = args.widget if args.widget.startswith("/") else f"/widgets/{args.widget.removesuffix('.html')}.html"
+            w = fetch_widget(args.base_url, path)
+            if args.out_dir:
+                stem = Path(path).stem
+                args.out_dir.mkdir(parents=True, exist_ok=True)
+                (args.out_dir / f"{stem}.html").write_text(w["html"], encoding="utf-8")
+                (args.out_dir / f"{stem}.txt").write_text(w["text"], encoding="utf-8")
+                (args.out_dir / f"{stem}.data.json").write_text(_dump(w["data"], pretty), encoding="utf-8")
+                print(f"wrote {args.out_dir}/{stem}.*", file=sys.stderr)
+                return 0
+            return _write_out({"path": path, "text": w["text"], "data": w["data"]}, args.output, pretty)
+        if entity == "lectures":
+            sessions = [s for s in _as_list(client.get_sessions(need_course())) if isinstance(s, dict)]
+            rows = lecture_index(
+                sessions,
+                [a for a in _as_list(client.get_assignments(cid)) if isinstance(a, dict)],
+                [q for q in _as_list(client.get_quizzes(cid)) if isinstance(q, dict)],
+                [c for c in _as_list(client.get_chat_channels(cid)) if isinstance(c, dict)],
+            )
+            return _write_out(rows, args.output, pretty)
+        if entity in {"lecture", "capstone"}:
+            need_course()
+            if not args.out_dir:
+                raise ApiError(f"{entity} requires --out-dir")
+            if entity == "lecture":
+                if not args.session:
+                    raise ApiError("lecture requires --session")
+                rows = lecture_bundle(client, cid, args.session, args.out_dir, pretty)
+                for r in rows:
+                    print(f"{r['session']['title'][:50]:50s} widgets={len(r['widgets'])} transcript={r['transcript']['source']} chat={len(r['chatFiles'])} errors={len(r['errors'])}", file=sys.stderr)
+                return 0
+            s = capstone_bundle(client, cid, args.out_dir, pretty, args.all_groups)
+            print(f"wrote {args.out_dir}/ teams={list(s['myTeams'])} channels={[c['label'] for c in s['myChannels']]} errors={len(s['errors'])}", file=sys.stderr)
+            return 0
         if entity == "daily-check":
             return _write_out(client.get_daily_check(), args.output, pretty)
         if entity == "invites":
             return _write_out(client.get_invites_pending(), args.output, pretty)
+        if entity in {"chat-messages", "chat-dump", "chat-roster", "chat-search", "scorecard", "galleries"}:
+            need_course()
+        if entity == "chat-messages":
+            if not args.channel:
+                raise ApiError("chat-messages requires --channel")
+            chan = resolve_channel(client, cid, args.channel)
+            return _write_out(client.get_all_chat_messages(cid, chan["id"]), args.output, pretty)
+        if entity == "chat-dump":
+            if not args.out_dir:
+                raise ApiError("chat-dump requires --out-dir")
+            data = chat_dump(client, cid)
+            write_chat_dir(data, args.out_dir, pretty)
+            counts = {k: len(v) for k, v in data["messages"].items()}
+            print(f"wrote {args.out_dir}/ messages={sum(counts.values())} {counts}", file=sys.stderr)
+            return 0
+        if entity == "chat-roster":
+            return _write_out(client.get_chat_roster(cid), args.output, pretty)
+        if entity in {"chat-search", "search"} and not args.query:
+            raise ApiError(f"{entity} requires --query")
+        if entity == "chat-search":
+            chan_id = resolve_channel(client, cid, args.channel)["id"] if args.channel else None
+            return _write_out(client.search_chat(cid, args.query, chan_id), args.output, pretty)
+        if entity == "search":
+            return _write_out(client.search(args.query), args.output, pretty)
+        if entity == "calendar":
+            return _write_out(client.get_calendar(cid), args.output, pretty)
+        if entity == "feed":
+            return _write_out(client.get_feed(cid), args.output, pretty)
+        if entity == "scorecard":
+            return _write_out(client.get_scorecard(cid), args.output, pretty)
+        if entity == "galleries":
+            if args.gallery_id:
+                return _write_out(client.get_submission_gallery(cid, args.gallery_id), args.output, pretty)
+            return _write_out(client.get_submission_galleries(cid), args.output, pretty)
+        if entity == "lesson":
+            if not args.lesson_id:
+                raise ApiError("lesson requires --lesson-id")
+            return _write_out(client.get_lesson(args.lesson_id), args.output, pretty)
+        if entity in {"quiz-questions", "quiz-attempt"}:
+            if not args.quiz_id:
+                raise ApiError(f"{entity} requires --quiz-id")
+            fn = client.get_quiz_questions if entity == "quiz-questions" else client.get_quiz_attempt
+            return _write_out(fn(args.quiz_id), args.output, pretty)
+        if entity == "notification-prefs":
+            return _write_out(client.get_notification_prefs(), args.output, pretty)
         if entity == "lessons":
             sessions = _as_list(client.get_sessions(need_course()))
             data = extract_lesson_markdown(
@@ -421,3 +588,4 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
